@@ -442,7 +442,7 @@ class DPP_EXPORT discord_voice_client : public websocket_client
 	bool sent_stop_frames{};
 
 	/**
-	 * @brief Number of times we have tried to reconnect in the last few seconds
+	 * @brief Number of reconnect attempts since the last successfully established session
 	 */
 	size_t times_looped{0};
 

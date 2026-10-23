@@ -336,6 +336,7 @@ bool discord_voice_client::handle_frame(const std::string &data, ws_opcode opcod
 			/* Voice resume */
 			case voice_opcode_connection_resumed:
 				log(ll_debug, "Voice connection resumed");
+				times_looped = 0;
 			break;
 			/* Voice HELLO */
 			case voice_opcode_connection_hello: {
@@ -391,6 +392,7 @@ bool discord_voice_client::handle_frame(const std::string &data, ws_opcode opcod
 					}
 				}
 				has_secret_key = true;
+				times_looped = 0;
 
 				/* Reset packet_nonce */
 				packet_nonce = 1;
