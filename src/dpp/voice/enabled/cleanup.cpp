@@ -33,8 +33,6 @@ namespace dpp {
 
 void discord_voice_client::cleanup()
 {
-	constexpr int THREAD_JOIN_TIMEOUT = 2900; // milliseconds
-	constexpr int THREAD_JOIN_SLEEP_INTERVAL = 10; // milliseconds
 	if (encoder != nullptr) {
 		opus_encoder_destroy(encoder);
 		encoder = nullptr;
@@ -43,24 +41,19 @@ void discord_voice_client::cleanup()
 		opus_repacketizer_destroy(repacketizer);
 		repacketizer = nullptr;
 	}
-	{
-		std::lock_guard lk(voice_courier_shared_state.mtx);
-		voice_courier_shared_state.terminating = true;
-	}
-	voice_courier_shared_state.signal_iteration.notify_one();
-
-	// wait until the thread becomes joinable (timeout to avoid permanent hang)
-	auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(THREAD_JOIN_TIMEOUT);
-	while (!voice_courier.joinable()) {
-		if (std::chrono::steady_clock::now() > deadline) {
-			log(dpp::ll_error, "voice courier thread did not become joinable within the timeout period, proceeding with cleanup anyway");
-			break ;
-		}
-		// log(dpp::ll_info, "waiting for voice courier thread to become joinable...");
-		std::this_thread::sleep_for(std::chrono::milliseconds(THREAD_JOIN_SLEEP_INTERVAL));
-	}
+	/* The courier thread is only started once voice is received (see read_ready), so it is
+	 * normal for it to not exist here. Waiting for it to appear just stalls every reconnect.
+	 */
 	if (voice_courier.joinable()) {
+		{
+			std::lock_guard lk(voice_courier_shared_state.mtx);
+			voice_courier_shared_state.terminating = true;
+		}
+		voice_courier_shared_state.signal_iteration.notify_one();
 		voice_courier.join();
+		/* This client may reconnect and start a new courier, which must not exit immediately */
+		std::lock_guard lk(voice_courier_shared_state.mtx);
+		voice_courier_shared_state.terminating = false;
 	}
 	if (fd != INVALID_SOCKET) {
 		owner->socketengine->delete_socket(fd);
