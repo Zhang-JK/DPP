@@ -92,7 +92,8 @@ struct DPP_EXPORT socket_engine_poll : public socket_engine_base {
 				continue;
 			}
 
-			if ((eh->flags & WANT_DELETION) == 0L) try {
+			dispatch_guard dispatch(*this, fd, *eh);
+			if (dispatch.active) try {
 
 				if ((revents & POLLHUP) != 0) {
 					eh->on_error(fd, *eh, 0);

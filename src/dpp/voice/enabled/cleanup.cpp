@@ -41,6 +41,14 @@ void discord_voice_client::cleanup()
 		opus_repacketizer_destroy(repacketizer);
 		repacketizer = nullptr;
 	}
+	/* read_ready() may be running on the socket engine thread right now. It uses
+	 * voice_courier_shared_state and can start the courier, so let it return before
+	 * the courier is joined and this object is freed.
+	 */
+	if (fd != INVALID_SOCKET) {
+		owner->socketengine->delete_socket(fd);
+		owner->socketengine->wait_for_dispatch(fd);
+	}
 	/* The courier thread is only started once voice is received (see read_ready), so it is
 	 * normal for it to not exist here. Waiting for it to appear just stalls every reconnect.
 	 */
@@ -54,9 +62,6 @@ void discord_voice_client::cleanup()
 		/* This client may reconnect and start a new courier, which must not exit immediately */
 		std::lock_guard lk(voice_courier_shared_state.mtx);
 		voice_courier_shared_state.terminating = false;
-	}
-	if (fd != INVALID_SOCKET) {
-		owner->socketengine->delete_socket(fd);
 	}
 }
 
