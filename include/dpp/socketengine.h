@@ -27,6 +27,8 @@
 #include <string_view>
 #include <functional>
 #include <shared_mutex>
+#include <condition_variable>
+#include <thread>
 #include <dpp/thread_pool.h>
 
 namespace dpp {
@@ -263,6 +265,14 @@ struct DPP_EXPORT socket_engine_base {
 	bool delete_socket(dpp::socket fd);
 
 	/**
+	 * @brief Wait until the event loop is not running a callback for the given socket
+	 * @note Call after delete_socket() and before freeing anything the socket's callbacks
+	 * use. Returns immediately when called from the event loop thread itself.
+	 * @param fd File descriptor
+	 */
+	void wait_for_dispatch(dpp::socket fd);
+
+	/**
 	 * @brief Iterate through the list of sockets and remove any
 	 * with WANT_DELETION set. This will also call implementation-specific
 	 * remove_socket() on each entry to be removed.
@@ -290,6 +300,21 @@ protected:
 	std::shared_mutex fds_mutex;
 
 	/**
+	 * @brief Notified when the event loop finishes the callbacks of a socket
+	 */
+	std::condition_variable_any dispatch_done;
+
+	/**
+	 * @brief Socket whose callbacks the event loop is running, or INVALID_SOCKET
+	 */
+	dpp::socket dispatching_fd{INVALID_SOCKET};
+
+	/**
+	 * @brief Thread running the event loop
+	 */
+	std::thread::id dispatch_thread{};
+
+	/**
 	 * @brief File descriptors, and their states
 	 */
 	socket_container fds;
@@ -305,6 +330,38 @@ protected:
 	 * @return file descriptor or nullptr if doesn't exist
 	 */
 	socket_events* get_fd(dpp::socket fd);
+
+	/**
+	 * @brief Marks a socket as having its callbacks run, for the lifetime of the guard,
+	 * so that wait_for_dispatch() on another thread blocks until they return
+	 */
+	struct dispatch_guard {
+		/**
+		 * @brief Owning socket engine
+		 */
+		socket_engine_base& engine;
+
+		/**
+		 * @brief False if the socket was already queued for deletion; its callbacks must not be run
+		 */
+		bool active{false};
+
+		/**
+		 * @brief Start dispatching a socket
+		 * @param e Owning socket engine
+		 * @param fd File descriptor
+		 * @param eh Socket events of fd
+		 */
+		dispatch_guard(socket_engine_base& e, dpp::socket fd, const socket_events& eh);
+
+		/**
+		 * @brief Finish dispatching and wake any wait_for_dispatch() callers
+		 */
+		~dispatch_guard();
+
+		dispatch_guard(const dispatch_guard&) = delete;
+		dispatch_guard& operator=(const dispatch_guard&) = delete;
+	};
 
 	/**
 	 * @brief Called by the prune() function to remove sockets when safe to do so.

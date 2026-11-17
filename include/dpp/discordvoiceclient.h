@@ -419,7 +419,8 @@ class DPP_EXPORT discord_voice_client : public websocket_client
 		/**
 		 * @brief Used to signal termination.
 		 *
-		 * @note Pending payloads are delivered first before termination.
+		 * @note The courier abandons parked payloads as soon as this is set so
+		 *       cleanup() can join the thread. Pending audio is discarded.
 		 */
 		bool terminating = false;
 	} voice_courier_shared_state;
@@ -442,7 +443,7 @@ class DPP_EXPORT discord_voice_client : public websocket_client
 	bool sent_stop_frames{};
 
 	/**
-	 * @brief Number of times we have tried to reconnect in the last few seconds
+	 * @brief Number of reconnect attempts since the last successfully established session
 	 */
 	size_t times_looped{0};
 

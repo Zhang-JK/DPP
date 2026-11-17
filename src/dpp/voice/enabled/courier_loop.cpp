@@ -78,12 +78,13 @@ void discord_voice_client::voice_courier_loop(discord_voice_client& client, cour
 					parking_lot.range.min_timestamp = parking_lot.range.max_timestamp + 1;
 				}
 
-				if (!has_payload_to_deliver) {
-					if (shared_state.terminating) {
-						/* We have delivered all data to handlers. Terminate now. */
-						break;
-					}
+				if (shared_state.terminating) {
+					/* cleanup() joins this thread. Drop whatever is parked so
+					 * a backlog cannot hold the caller for the whole flush. */
+					break;
+				}
 
+				if (!has_payload_to_deliver) {
 					shared_state.signal_iteration.wait(lk, [&shared_state]() {
 						if (shared_state.terminating) {
 							return true;
@@ -137,6 +138,29 @@ void discord_voice_client::voice_courier_loop(discord_voice_client& client, cour
 				}
 
 				for (rtp_seq_t seq = d.min_seq; !d.parked_payloads.empty(); ++seq) {
+					{
+						std::lock_guard lk(shared_state.mtx);
+						if (shared_state.terminating) {
+							/* Already inside a flush when cleanup() asked us to stop.
+							 * Returning unblocks join(); the rest of this batch is dropped. */
+							return;
+						}
+					}
+
+					const rtp_seq_t next_seq = d.parked_payloads.top().seq;
+					/* Forward distance on the uint16 RTP sequence. A packet that
+					 * sits behind `seq`, or a jump of more than a few hundred
+					 * milliseconds, has a huge forward gap. Concealing every
+					 * missing sequence number walks the whole 16-bit space
+					 * (~65536 on_voice_receive calls per late packet) and
+					 * cleanup()'s join waits until that walk finishes. */
+					constexpr rtp_seq_t max_plc_gap = 20;
+					const rtp_seq_t gap = static_cast<rtp_seq_t>(next_seq - seq);
+					if (gap > max_plc_gap) {
+						seq = static_cast<rtp_seq_t>(next_seq - 1);
+						continue;
+					}
+
 					if (d.parked_payloads.top().seq != seq) {
 						/*
 						 * Lost a packet with sequence number "seq",

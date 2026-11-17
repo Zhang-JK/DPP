@@ -92,6 +92,34 @@ socket_events* socket_engine_base::get_fd(dpp::socket fd) {
 	return iter->second.get();
 }
 
+socket_engine_base::dispatch_guard::dispatch_guard(socket_engine_base& e, dpp::socket fd, const socket_events& eh) : engine(e) {
+	std::unique_lock lock(engine.fds_mutex);
+	engine.dispatch_thread = std::this_thread::get_id();
+	if ((eh.flags & WANT_DELETION) == 0L) {
+		engine.dispatching_fd = fd;
+		active = true;
+	}
+}
+
+socket_engine_base::dispatch_guard::~dispatch_guard() {
+	if (!active) {
+		return;
+	}
+	{
+		std::unique_lock lock(engine.fds_mutex);
+		engine.dispatching_fd = INVALID_SOCKET;
+	}
+	engine.dispatch_done.notify_all();
+}
+
+void socket_engine_base::wait_for_dispatch(dpp::socket fd) {
+	std::unique_lock lock(fds_mutex);
+	if (std::this_thread::get_id() == dispatch_thread) {
+		return;
+	}
+	dispatch_done.wait(lock, [this, fd] { return dispatching_fd != fd; });
+}
+
 void socket_engine_base::inplace_modify_fd(dpp::socket fd, uint8_t extra_flags) {
 	bool should_modify;
 	socket_events s{};

@@ -88,7 +88,8 @@ struct DPP_EXPORT socket_engine_epoll : public socket_engine_base {
 				continue;
 			}
 
-			if ((eh->flags & WANT_DELETION) == 0L) try {
+			dispatch_guard dispatch(*this, fd, *eh);
+			if (dispatch.active) try {
 
 				if ((ev.events & EPOLLHUP) != 0U) {
 					stats.errors++;

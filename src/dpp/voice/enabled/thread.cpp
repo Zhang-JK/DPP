@@ -32,15 +32,10 @@ void discord_voice_client::on_disconnect() {
 
 	time_t current_time = time(nullptr);
 
-	/* Here, we check if it's been longer than 3 seconds since the previous loop,
-	 * this gives us time to see if it's an actual disconnect, or an error.
-	 * This will prevent us from looping too much, meaning error codes do not cause an infinite loop.
+	/* times_looped is only reset once a session is established (see handle_frame), not by
+	 * elapsed time: a reconnect that fails every few seconds (e.g. resume rejected with 1002)
+	 * must still escalate to a full reconnection instead of looping forever.
 	 */
-	if (current_time - last_loop_time >= 3) {
-		times_looped = 0;
-	}
-
-	/* This does mean we'll always have times_looped at a minimum of 1, this is intended. */
 	times_looped++;
 
 	/* If we've looped 5 or more times, abort the loop. */

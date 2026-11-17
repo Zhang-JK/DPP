@@ -74,7 +74,8 @@ struct DPP_EXPORT socket_engine_kqueue : public socket_engine_base {
 				continue;
 			}
 
-			if ((eh->flags & WANT_DELETION) == 0L) try {
+			dispatch_guard dispatch(*this, kev.ident, *eh);
+			if (dispatch.active) try {
 
 				const short filter = kev.filter;
 				if (kev.flags & EV_EOF || kev.flags & EV_ERROR) {
