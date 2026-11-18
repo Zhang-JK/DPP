@@ -52,6 +52,12 @@ bool socket_engine_base::update_socket(const socket_events &e) {
 	std::unique_lock lock(fds_mutex);
 	if (e.fd != INVALID_SOCKET && fds.find(e.fd) != fds.end()) {
 		auto iter = fds.find(e.fd);
+		/* Overwriting the flags would clear WANT_DELETION, keeping the socket's callbacks
+		 * alive after its owner returned from wait_for_dispatch() and freed their state.
+		 */
+		if ((iter->second->flags & WANT_DELETION) != 0L) {
+			return false;
+		}
 		*(iter->second) = e;
 		stats.updates++;
 		return true;

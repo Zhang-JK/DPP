@@ -119,7 +119,11 @@ struct DPP_EXPORT socket_engine_poll : public socket_engine_base {
 
 				if ((revents & POLLOUT) != 0) {
 					stats.writes++;
-					eh->flags &= ~WANT_WRITE;
+					{
+						/* delete_socket() may set WANT_DELETION from another thread meanwhile */
+						std::unique_lock lock(fds_mutex);
+						eh->flags &= ~WANT_WRITE;
+					}
 					update_socket(*eh);
 					eh->on_write(fd, *eh);
 				}
