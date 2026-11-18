@@ -250,7 +250,7 @@ struct DPP_EXPORT socket_engine_base {
 	/**
 	 * @brief Update an existing socket in the socket engine
 	 * @param e Socket events
-	 * @return true if socket was updated
+	 * @return true if socket was updated, false if it is unknown or queued for deletion
 	 */
 	virtual bool update_socket(const socket_events& e);
 

@@ -87,7 +87,11 @@ struct DPP_EXPORT socket_engine_kqueue : public socket_engine_base {
 				}
 				if (filter == EVFILT_WRITE) {
 					const int bits_to_clr = WANT_WRITE;
-					eh->flags &= ~bits_to_clr;
+					{
+						/* delete_socket() may set WANT_DELETION from another thread meanwhile */
+						std::unique_lock lock(fds_mutex);
+						eh->flags &= ~bits_to_clr;
+					}
 					if (eh->on_write) {
 						eh->on_write(kev.ident, *eh);
 						stats.writes++;
@@ -109,6 +113,7 @@ struct DPP_EXPORT socket_engine_kqueue : public socket_engine_base {
 
 			if ((eh->flags & WANT_DELETION) != 0L) {
 				remove_socket(kev.ident);
+				std::unique_lock lock(fds_mutex);
 				fds.erase(kev.ident);
 			}
 		}
